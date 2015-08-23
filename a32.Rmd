@@ -1,0 +1,184 @@
+---
+title: Explore the effects of major storms and weather events on public health and
+  economic consequences in the United States
+author: "Dominic Tran"
+output: 
+  html_document:
+    keep_md: true
+---
+
+
+## Synopsis
+In this report, the aim is to explore and answer simple questions: (1) which weather event types are most harmful to the United States population, (2) which weather event types have the most economic consequences across the United States.
+
+The data used in this study is based on the U.S. National Oceanic and Atmospheric Administration's (NOAA) [storm database](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2).
+
+As can be seen in the report, Tornado/Waterspout is the most harmful to 
+the United States population; and Flood/Small Stream causes the most financial damage.
+
+## Data Processing
+```{r library}
+library(ggplot2)
+```
+
+Download and import data
+```{r cache=TRUE}
+# unfortunate - allocated error was reported for the below code
+#data.zip <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+#temp <- tempfile()
+#download.file(data.zip, temp, method="curl")
+#data <- read.csv(bzfile(temp), na.strings = "?", stringsAsFactors = FALSE)
+#unlink(temp)
+```
+
+To work around, assuming that "repdata-data-StormData.csv.bz2" is in the current
+working directory
+```{r cache=TRUE}
+data.zip <- "repdata-data-StormData.csv.bz2"
+data <- read.csv(bzfile(data.zip), na.strings = "?", stringsAsFactors = FALSE)
+```
+
+Clean data
+```{r}
+data <- data[!is.na(data$EVTYPE),]
+data$EVTYPE <- toupper(data$EVTYPE)
+data <- data[grep("SUMMARY", data$EVTYPE, invert = TRUE),]
+data <- data[grep("NONE", data$EVTYPE, invert = TRUE),]
+```
+
+Prepare for transformation
+Mapping of "EVTYPE" to related/similar weather event types.
+```{r}
+thunderstorm <- paste("THUDERSTORM","THUNDEERSTORM","THUNDERESTORM",
+                           "THUNDERSTORM","TUNDERSTORM", "THUNDERTSORM",
+                           "THUNDERSTROM","THUNDERTORM", "TSTM","THUNDESTORM",
+                           "THUNERSTORM","GUSTNADO",
+                           sep = "|")
+high.temperature <- paste("HYPERTHERMIA","RECORD HIGH","RECORD TEMPERATURE",
+                     "HOT","TEMPERATURE RECORD","HEAT",
+                      sep = "|")
+low.temperature <- paste("FREEZE","FROST","FREEZING","HYPOTHERMIA",
+                        "RECORD LOW","LOW TEMPERATURE","LOW TEMP",
+                        sep = "|")
+high.swell <- paste("HIGH\\s*SWELLS","HEAVY SWELLS","TIDE",
+                   "HIGH WAVE","HIGH WATER","COASTAL SURGE",
+                   "HIGH SEA","WAVE","ROUGH SEA","HEAVY SEA",
+                   sep = "|")
+tornado  <- paste("TORNADO","TORNDAO","WATERSPOUT","WAYTERSPOUT","FUNNEL",
+                  "WALL CLOUD","WATER SPOUT","LANDSPOUT",
+                  sep = "|")
+mapEventType <- function(x) {
+    # order is important - eg: get Thunderstorm, Tropical storm first
+    # before Storm
+    if (grepl("BLIZZARD", x)) "BLIZZARD"
+    else if (grepl(thunderstorm, x)) "THUNDERSTORM"
+    else if (grepl(tornado, x)) "TORNADO/WATERSPOUT"
+    else if (grepl("TROPICAL STORM|TYPHOON", x)) "TROPICAL STORM"
+    else if (grepl("LIGHTING|LIGHTNING|LIGNTNING", x)) "LIGHTNING"
+    else if (grepl("WIND|WND", x)) "WIND"
+    else if (grepl("FLOOD|FLOOODING|STREAM|RISING WATER", x)) "FLOOD/SMALL STREAM"
+    else if (grepl("AVALANCHE|AVALANCE", x)) "AVALANCHE"
+    else if (grepl("COLD|COOL", x)) "COLD/COOL WEATHER"
+    else if (grepl("HAIL", x)) "HAIL"   
+    else if (grepl("SLIDE|SLUMP", x)) "LAND/MUD SLIDE"
+    else if (grepl("RAIN|HEAVY SHOWER", x)) "RAIN/HEAVY SHOWER"  
+    else if (grepl("SNOW", x)) "SNOW"   
+    else if (grepl("HURRICANE|REMNANTS OF FLOYD", x)) "HURRICANE"
+    else if (grepl("FIRE|RED FLAG CRITERIA", x)) "FIRE"
+    else if (grepl("GLAZE|ICE|ICY|SLEET", x)) "GLAZE/ICE"
+    else if (grepl(high.swell, x)) "HIGH SWELLS/TIDE/WAVE" 
+    else if (grepl("WARM", x)) "WARM"     
+    else if (grepl("WET", x)) "WET" 
+    else if (grepl(low.temperature, x)) "FROST/FREEZE/HYPOTHERMIA"           
+    else if (grepl(high.temperature, x)) "HIGH TEMPERATURE/HYPERTHERMIA"        
+    else if (grepl("TSUNAMI", x)) "TSUNAMI"            
+    else if (grepl("SMOKE", x)) "SMOKE"         
+    else if (grepl("VOLCANIC", x)) "VOLCANIC"         
+    else if (grepl("FOG|VOG", x)) "FOG" 
+    else if (grepl("STORM", x)) "STORM"         
+    else if (grepl("DRY|DRI|DROUGHT", x)) "DROUGHT/DRY"   
+    else if (grepl("DAM", x)) "DAM BREAK/FAILURE"        
+    else if (grepl("URBAN", x)) "URBAN/SMALL"        
+    else if (grepl("WINTER|WINTRY", x)) "WINTER WEATHER"           
+    else if (grepl("EROSION|EROSIN", x)) "EROSION "          
+    else if (grepl("SURF|RIP CURRENT|DROWN", x)) "SURF/RIP CURRENT/DROWN"        
+    else if (grepl("MARINE|SEICHE", x)) "MARINE ACCIDENT/SEICHE"  
+    else if (grepl("PRECIPITATION|PRECIPATATION|PRECIP", x)) "PRECIPITATION"
+    else if (grepl("MICROBURST|DOWNBURST", x)) "MICROBURST"  
+    else if (grepl("DUST", x)) "DUST"         
+    else if (grepl("TURBULENCE", x)) "TURBULENCE"           
+    else "Other"
+}
+```
+
+Damages are report in dollars and followed by an alphabetical character signifying the magnitude.  The [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf) only specifies "K" for thousands, "M" for millions, and "B" for billions.  Other magnitudes are assumed; for example "H" for hundreds, and 
+numeric values indicate the number of zeroes.
+```{r}
+toTenExponent <- function(x) {
+    if (is.na(x)) return(0)
+    
+    numX <- as.numeric(x)
+    if (!is.na(numX)) return(numX)
+
+    upperX <- toupper(x)
+    if (upperX == "H") return(2)
+    else if (upperX == "K") return(3)
+    else if (upperX == "M") return(6)
+    else if (upperX == "B") return(9)
+    else return(0)
+}
+```
+
+Perform transformation
+```{r}
+data$newEVTYPE <- sapply(data$EVTYPE, mapEventType)
+data$newEVTYPE <- as.factor(data$newEVTYPE)
+
+data$HARMFUL <- data$FATALITIES + data$INJURIES
+
+data$DMG <- data$PROPDMG * 10^sapply(data$PROPDMGEXP, toTenExponent) +
+            data$CROPDMG * 10^sapply(data$CROPDMGEXP, toTenExponent)
+
+event.harmful <- aggregate(HARMFUL ~ newEVTYPE, data = data, sum)
+event.damage <- aggregate(DMG ~ newEVTYPE, data = data, sum)
+```
+
+
+## Results
+Most harmful event - The bar chart below shows the total number fatalities and injuries
+for each (mapped) category of weather events.
+```{r}
+g <- ggplot(event.harmful, aes(newEVTYPE, HARMFUL))
+g <- g + geom_bar(colour="blue", stat="identity")
+g <- g + ggtitle("Weather events harmful to the United States population")
+g <- g + ylab("Number of injuries and fatalities")
+g <- g + xlab("Event types")
+g <- g + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1))
+print(g)
+```
+
+As it can be seen, the most harmful event is:
+```{r}
+most.harmful <- event.harmful$HARMFUL == max(event.harmful$HARMFUL)
+event.most.harmful <- event.harmful[most.harmful,]
+event.most.harmful
+```
+
+Event causes the most damage - The bar chart below shows the total financial damage
+of property and crop damanges for each (mapped) category of weather events.
+```{r}
+g <- ggplot(event.damage, aes(newEVTYPE, DMG / 1000000))
+g <- g + geom_bar(colour="blue", stat="identity")
+g <- g + ggtitle("Economic consequences of weather events across the United States")
+g <- g + ylab("Damages in Millions of Dollars")
+g <- g + xlab("Event types")
+g <- g + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1))
+print(g)
+```
+
+As it can be seen, the event that causes the most financial damage is:
+```{r}
+most.damage <- event.damage$DMG == max(event.damage$DMG)
+event.most.damage <- event.damage[most.damage,]
+event.most.damage
+```
